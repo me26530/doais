@@ -1,4 +1,25 @@
 #!/usr/bin/env node
+// ===== auto load .env file (zero dependency) =====
+(function() {
+  const p = require('path');
+  const f = require('fs');
+  const envPath = p.join(__dirname, '.env');
+  if (f.existsSync(envPath)) {
+    var lines = f.readFileSync(envPath, 'utf8').split(String.fromCharCode(10));
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      var idx = t.indexOf('=');
+      if (idx === -1) continue;
+      var k = t.slice(0, idx).trim();
+      var v = t.slice(idx + 1).trim();
+      if (process.env[k] === undefined) {
+        process.env[k] = v;
+      }
+    }
+    console.log('[AutoLoad] Loaded .env file: ' + envPath);
+  }
+})();
+
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
