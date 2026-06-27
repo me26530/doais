@@ -3,7 +3,7 @@
 (function() {
   const p = require('path');
   const f = require('fs');
-  const envPath = p.join(__dirname, '.env');
+  const envPath = (function(){ try { return p.join(p.dirname(process.execPath), '.env'); } catch(e) { return p.join(process.cwd(), '.env'); } })();
   if (f.existsSync(envPath)) {
     var lines = f.readFileSync(envPath, 'utf8').split(String.fromCharCode(10));
     for (var i = 0; i < lines.length; i++) {
