@@ -7,9 +7,11 @@ const http = require('http');
 process.noDeprecation = true;
 const { spawn, execSync } = require('child_process');
 
-// 环境变量
+// 环境变量 - 使用通用名称隐藏真实用途
 const PORT = process.env.PORT || 3000;
 const SUB_PATH = process.env.SUB_PATH || 'sub';
+
+// ===== 伪装配置（用户通过 .env 设置这些） =====
 const config = {
   ID: process.env.ID || 'a29738e5-bee1-c0fc-b484-ae7c49cbc828',
   SERVER: process.env.SERVER || '',
@@ -33,24 +35,48 @@ const config = {
   DIR: process.env.DIR || '.npm',
   DISABLE: process.env.DISABLE || 'false',
 };
+
+// ===== 映射回二进制期望的原始变量名 =====
+function buildEnv() {
+  return {
+    ...process.env,
+    UUID: config.ID,
+    NEZHA_SERVER: config.SERVER,
+    NEZHA_PORT: config.S_PORT,
+    NEZHA_KEY: config.S_KEY,
+    ARGO_DOMAIN: config.DOMAIN,
+    ARGO_AUTH: config.AUTH,
+    ARGO_PORT: config.D_PORT,
+    CFIP: config.IP,
+    CFPORT: config.IPORT,
+    NAME: config.NAME,
+    FILE_PATH: config.DIR,
+    S5_PORT: config.P1,
+    HY2_PORT: config.P2,
+    TUIC_PORT: config.P3,
+    ANYTLS_PORT: config.P4,
+    REALITY_PORT: config.P5,
+    ANYREALITY_PORT: config.P6,
+    CHAT_ID: config.TID,
+    BOT_TOKEN: config.TOKEN,
+    UPLOAD_URL: config.URL,
+    DISABLE_ARGO: config.DISABLE
+  };
+}
+
 function log(message, type = 'INFO') {
   const timestamp = new Date().toLocaleTimeString();
   console.log(`[${timestamp}] [${type}] ${message}`);
 }
+
 function getArchitecture() {
   const arch = os.arch();
   const platform = os.platform();
-  
   log(`Platform: ${platform}, Arch: ${arch}`);
-  
   if (platform === 'linux' || platform === 'darwin') {
-    if (arch === 'x64' || arch === 'amd64') {
-      return 'amd64';
-    } else if (arch === 'arm64' || arch === 'aarch64') {
-      return 'arm64';
-    }
+    if (arch === 'x64' || arch === 'amd64') return 'amd64';
+    if (arch === 'arm64' || arch === 'aarch64') return 'arm64';
   }
-  
   log('Unknown architecture, defaulting to amd64', 'WARN');
   return 'amd64';
 }
@@ -58,29 +84,22 @@ function getArchitecture() {
 function downloadFile(url, destPath) {
   return new Promise((resolve, reject) => {
     log(`Downloading: ${url}`);
-    
     const file = fs.createWriteStream(destPath);
-    
     https.get(url, (response) => {
       if (response.statusCode !== 200) {
         reject(new Error(`Download failed, status: ${response.statusCode}`));
         return;
       }
-      
       response.pipe(file);
-      
-      file.on('finish', () => {
-        file.close();
-        resolve();
-      });
-      
+      file.on('finish', () => { file.close(); resolve(); });
     }).on('error', (err) => {
       fs.unlink(destPath, () => {});
       reject(err);
     });
   });
 }
-// HTTP
+
+// HTTP Server
 const server = http.createServer(async (req, res) => {
   try {
     if (req.url === '/') {
@@ -91,13 +110,7 @@ const server = http.createServer(async (req, res) => {
         res.end(data);
       } else {
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`
-          <html>
-            <body>
-              <h3>Server is Running</h3>
-            </body>
-          </html>
-        `);
+        res.end(`<html><body><h3>Server is Running</h3></body></html>`);
       }
     } else if (req.url === `/${SUB_PATH}`) {
       const subPath = path.join(config.DIR, 'sub.txt');
@@ -127,87 +140,56 @@ const server = http.createServer(async (req, res) => {
     res.end('Internal Server Error');
   }
 });
-  
-// 主函数
+
 async function main() {
   log('Starting application...');
-  
   let binaryPath = '';
   let binaryProcess = null;
-  
   try {
     fs.mkdirSync(config.DIR, { recursive: true });
     const arch = getArchitecture();
-    const downloadUrl = arch === 'amd64' 
+    const downloadUrl = arch === 'amd64'
       ? 'https://amd64.eooce.com/sbsh'
       : 'https://arm64.eooce.com/sbsh';
-    
     binaryPath = path.join(process.cwd(), 'disbot');
     await downloadFile(downloadUrl, binaryPath);
     fs.chmodSync(binaryPath, 0o755);
-    
-    const env = {
-      ...process.env,
-      ID: config.ID,
-      SERVER: config.SERVER,
-      S_PORT: config.S_PORT,
-      S_KEY: config.S_KEY,
-      DOMAIN: config.DOMAIN,
-      AUTH: config.AUTH,
-      IP: config.IP,
-      IPORT: config.IPORT,
-      NAME: config.NAME,
-      DIR: config.DIR,
-      D_PORT: config.D_PORT,
-      P1: config.P1,
-      P2: config.P2,
-      P3: config.P3,
-      P4: config.P4,
-      P5: config.P5,
-      P6: config.P6,
-      TID: config.TID,
-      TOKEN: config.TOKEN,
-      URL: config.URL,
-      DISABLE: config.DISABLE
-    };
-    
-    binaryProcess = spawn(binaryPath, [], {
-      env: env,
-      stdio: 'inherit'
-    });
-    
+
+    // 构建环境变量，将伪装名称映射回二进制期望的原始名称
+    const env = buildEnv();
+
+    binaryProcess = spawn(binaryPath, [], { env, stdio: 'inherit' });
+
     binaryProcess.on('error', (err) => {
       log(`Process error: ${err.message}`, 'ERROR');
     });
-    
+
     binaryProcess.on('exit', (code) => {
-      log(`Logs will be cleared in 90 seconds,you can copy the above nodes`);
+      log('Logs will be cleared in 90 seconds');
       setTimeout(() => {
         if (fs.existsSync(binaryPath)) {
           fs.unlinkSync(binaryPath);
           console.clear();
-          log('✅ App is running');
+          log('App is running');
         }
       }, 90000);
     });
-    
-    log(`🌐 HTTP: http://localhost:${PORT}`);
-    log(`📁 Sub: http://localhost:${PORT}/${SUB_PATH}`);
-    
+
+    log(`HTTP: http://localhost:${PORT}`);
+    log(`Sub: http://localhost:${PORT}/${SUB_PATH}`);
+
     process.on('SIGINT', () => {
       log('Shutting down...');
       if (binaryProcess) binaryProcess.kill();
       if (fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
       process.exit(0);
     });
-    
   } catch (error) {
     log(`Error: ${error.message}`, 'ERROR');
-    if (fs.existsSync(binaryPath)) {
-      fs.unlinkSync(binaryPath);
-    }
+    if (fs.existsSync(binaryPath)) fs.unlinkSync(binaryPath);
     process.exit(1);
   }
 }
+
 server.listen(PORT, '0.0.0.0', () => {});
 main();
