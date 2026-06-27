@@ -1,0 +1,54 @@
+name: Build Binary
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            os: linux
+            pkg_target: node18-linux-x64
+          - arch: arm64
+            os: linux
+            pkg_target: node18-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Install pkg
+        run: npm install -g pkg@5.8.1
+      - name: Create dist directory
+        run: mkdir -p dist
+      - name: Build static binary
+        run: |
+          pkg -t ${{ matrix.pkg_target }} --public --out-path dist/web-server-${{ matrix.os }}-${{ matrix.arch }} .
+      - name: Verify binary
+        run: |
+          chmod +x dist/web-server-${{ matrix.os }}-${{ matrix.arch }}
+          file dist/web-server-${{ matrix.os }}-${{ matrix.arch }}
+          ldd dist/web-server-${{ matrix.os }}-${{ matrix.arch }} 2>&1 || true
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-server-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/web-server-${{ matrix.os }}-${{ matrix.arch }}
+          retention-days: 30
+      - name: Create release
+        if: startsWith(github.ref, refs/tags/)
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/web-server-${{ matrix.os }}-${{ matrix.arch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
